@@ -1,4 +1,5 @@
 from collections import namedtuple
+import numpy as np
 
 from ._base import BaseDispersion
 from ._surf96 import surf96
@@ -11,7 +12,7 @@ __all__ = [
 
 
 DispersionCurve = namedtuple(
-    "DispersionCurve", ("period", "velocity", "mode", "wave", "type")
+    "DispersionCurve", ("x", "velocity", "mode", "wave", "type", "x_axis_type")
 )
 
 
@@ -19,6 +20,8 @@ ifunc = {
     "dunkin": {"love": 1, "rayleigh": 2},
     "fast-delta": {"love": 1, "rayleigh": 3},
 }
+
+_XAXIS = ["period", "frequency"]
 
 
 class PhaseDispersion(BaseDispersion):
@@ -48,7 +51,7 @@ class PhaseDispersion(BaseDispersion):
         """
         super().__init__(thickness, velocity_p, velocity_s, density, algorithm, dc)
 
-    def __call__(self, t, mode=0, wave="rayleigh"):
+    def __call__(self, t, mode=0, wave="rayleigh", x_axis="period"):
         """
         Calculate phase velocities for input period axis.
 
@@ -71,6 +74,14 @@ class PhaseDispersion(BaseDispersion):
         This function does not perform any check to reduce overhead in case this function is called multiple times (e.g. inversion).
 
         """
+
+        if x_axis not in _XAXIS:
+            raise ValueError("Incorrect x-axis specified. Please choose either 'frequency' or 'period' as x-axis.")
+        elif x_axis == "frequency":
+            #Makes sure frequency is sorted and convert to sorted periods
+            t = np.sort(t)
+            t = 1 / t[::-1]
+
         c = surf96(
             t,
             self._thickness,
@@ -85,8 +96,11 @@ class PhaseDispersion(BaseDispersion):
         idx = c > 0.0
         t = t[idx]
         c = c[idx]
+        
+        if x_axis == "frequency":
+            t = 1 / t[::-1]
 
-        return DispersionCurve(t, c, mode, wave, "phase")
+        return DispersionCurve(t, c, mode, wave, "phase", x_axis_type=x_axis)
 
 
 class GroupDispersion(BaseDispersion):
@@ -126,7 +140,7 @@ class GroupDispersion(BaseDispersion):
         super().__init__(thickness, velocity_p, velocity_s, density, algorithm, dc)
         self._dt = dt
 
-    def __call__(self, t, mode=0, wave="rayleigh"):
+    def __call__(self, t, mode=0, wave="rayleigh", x_axis="period"):
         """
         Calculate group velocities for input period axis.
 
@@ -149,6 +163,13 @@ class GroupDispersion(BaseDispersion):
         This function does not perform any check to reduce overhead in case this function is called multiple times (e.g. inversion).
 
         """
+        if x_axis not in _XAXIS:
+            raise ValueError("Incorrect x-axis specified. Please choose either 'frequency' or 'period' as x-axis.")
+        elif x_axis == "frequency":
+            #Makes sure frequency is sorted and convert to sorted periods
+            t = np.sort(t)
+            t = 1 / t[::-1]
+
         t1 = t / (1.0 + self._dt)
         c = surf96(
             t1,
@@ -183,7 +204,10 @@ class GroupDispersion(BaseDispersion):
         t2 = 1.0 / t2[idx]
         c = (t1 - t2) / (t1 / c[idx] - t2 / c2[idx])
 
-        return DispersionCurve(t, c, mode, wave, "group")
+        if x_axis == "frequency":
+            t = 1 / t[::-1]
+
+        return DispersionCurve(t, c, mode, wave, "group", x_axis)
 
     @property
     def dt(self):
